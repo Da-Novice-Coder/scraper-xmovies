@@ -1,0 +1,25 @@
+{
+  "name": "mate",
+  "version": "1.0.0",
+  "description": "",
+  "main": "scraper.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node scraper.js",
+    "dev": "pm2 start scraper.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "prisma": "^5.16.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.16.1",
+    "dotenv": "^16.4.1",
+    "fs-extra": "^11.2.0",
+    "mongoose": "^8.5.0",
+    "puppeteer": "^22.12.1",
+    "winston": "^3.13.0"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules
+# Keep environment variables out of version control
+.env
+scraper.log
+script.js
+movies.sql
+config/crawled.json
+config/queue.json
+config/movieDb.movies.json
+config/movies.json
