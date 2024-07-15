@@ -133,12 +133,14 @@ const scrapePage = async (browser, url) => {
 
       const nextPageLink = await page.evaluate(() => {
         const nextButton = document.querySelector('.pagination ul .next-page');
-        return nextButton ? `https://www.xvideos.com${nextButton.attributes[0].textContent}/` : null; // `${baseUrl}${nextButton.attributes[0].textContent}/`
+        return nextButton ? nextButton.href : null; // `${baseUrl}${nextButton.attributes[0].textContent}/`
       });
 
       if (nextPageLink && !crawled.has(nextPageLink)) {
         queue.add(nextPageLink);
       }
+
+      console.log(nextPageLink);
 
       await page.close();
       crawled.add(url);
