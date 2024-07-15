@@ -22,6 +22,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const getRandomProxy = () => proxies[Math.floor(Math.random() * proxies.length)];
 const getRandomUserAgent = () => userAgents[Math.floor(Math.random() * userAgents.length)];
 
+const script = "Object.defineProperty(navigator, 'webdriver', {get: () => false})"
+const features = "window.xv.disclaimer.setFeatures('accept-all');"
+
 const saveState = async () => {
   fs.writeFileSync(queueFilePath, JSON.stringify(Array.from(queue)));
   fs.writeFileSync(crawledFilePath, JSON.stringify(Array.from(crawled)));
@@ -60,10 +63,61 @@ const setRequestInterception = async (page) => {
   });
 };
 
+const browserInfo = async (page) => {
+  const info = await page.evaluate(() => {
+    return {
+      agent: navigator.userAgent,
+      isWebDriver: navigator.webdriver,
+      language: navigator.language
+    }
+  })
+
+  console.log(info);
+}
+
+const clickDisclaimer = async (page) => {
+  // const enter = await page.waitForSelector('#disclaimer_background .disclaimer-enter-btn')
+  // await enter.click()
+
+  // const cookies = await page.waitForSelector('#disclaimer_background .text-top')
+  // await cookies.parentElement.click()
+  // await page.waitForSelector('#disclaimer_background .disclaimer-enter-btn');
+  // await page.waitForSelector('#disclaimer_background .text-top');
+
+ const disclaimer = await page.evaluate(() => {
+
+  const disclaimerBtn = document.querySelector('#disclaimer_background .disclaimer-enter-btn')
+
+  if(disclaimerBtn){
+    disclaimerBtn.click()
+    const cookieSpan = document.querySelector('#disclaimer_background .text-top')
+    if(cookieSpan){
+      cookieSpan.parentElement.click()
+      return { d: disclaimerBtn.innerText, c: cookieSpan.innerText }
+    }
+  } else{
+    return {};
+  }
+
+})
+ console.log(disclaimer);
+}
+
 const scrapeMoviePage = async (page, url) => {
   try {
   await page.goto(url, { waitUntil: 'networkidle2', timeout: 50000 });
-  // await page.waitForSelector('.video-hd-mark', { visible: true })
+  // await page.evaluateOnNewDocument(features);
+  await clickDisclaimer(page)
+  await browserInfo(page)
+
+  // const accept = await page.evaluate(() => {
+  //   window.xv.disclaimer.close_pop(event, null, 'straight')
+  //   window.xv.disclaimer.setFeatures('accept-all');
+
+  //   return "Accepted All Cookies if there was any"
+  // })
+
+  // console.log(accept);
 
   const movie = await page.evaluate(() => {
     const data = {};
@@ -110,12 +164,25 @@ const scrapePage = async (browser, url) => {
   while (retries < maxRetries) {
     try {
       const page = await browser.newPage();
-      // await page.authenticate({ username: proxyUsername, password: proxyPassword });
-      // await page.setUserAgent(getRandomUserAgent());
+      await page.authenticate({ username: proxyUsername, password: proxyPassword });
+      await page.setUserAgent(getRandomUserAgent());
+      page.evaluateOnNewDocument(script);
+
       await setRequestInterception(page);
 
       logger.info(`Scraping: ${url}`);
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 50000 });
+      // await page.evaluateOnNewDocument(features);
+      await browserInfo(page)
+      await clickDisclaimer(page)
+      // const accept = await page.evaluate(() => {
+      //   window.xv.disclaimer.close_pop(event, null, 'straight')
+      //   window.xv.disclaimer.setFeatures('accept-all');
+      // })
+
+      // console.log(accept);
+
+
       await page.waitForSelector('.thumb-block');
 
       const movieLinks = await page.evaluate(() => {
@@ -128,12 +195,9 @@ const scrapePage = async (browser, url) => {
         }
       }
 
-      // const numberOfPages = await page.$eval('.last-page', (lastpage) => parseInt(lastpage.innerText));
-      // logger.info(`Scraping ${numberOfPages} pages from xvideos.com`);
-
       const nextPageLink = await page.evaluate(() => {
         const nextButton = document.querySelector('.pagination ul .next-page');
-        return nextButton ? nextButton.href : null; // `${baseUrl}${nextButton.attributes[0].textContent}/`
+        return nextButton ? `https://www.xvideos.com${nextButton.attributes[0].textContent}/` : null;
       });
 
       if (nextPageLink && !crawled.has(nextPageLink)) {
@@ -142,7 +206,7 @@ const scrapePage = async (browser, url) => {
 
       console.log(nextPageLink);
 
-      await page.close();
+      // await page.close();
       crawled.add(url);
       return;
     } catch (error) {
@@ -151,7 +215,7 @@ const scrapePage = async (browser, url) => {
       retries++;
       if (retries >= maxRetries) {
         logger.error(`Max retries reached for ${url}`);
-        await browser.close();
+        // await browser.close();
         // crawled.add(url);
       }
     }
@@ -168,26 +232,29 @@ const main = async () => {
 
   const browser = await puppeteer.launch({
     headless: false,
-    args: ['--no-sandbox'] // , `--proxy-server=${getRandomProxy()}`
+    args: ['--no-sandbox' , `--proxy-server=${getRandomProxy()}`] //
   });
 
   try {
     while (queue.size > 0) {
       const url = queue.values().next().value;
-      queue.delete(url);
 
       if (!crawled.has(url)) {
         if (url.includes('/video')) {
           const page = await browser.newPage();
-          // await page.authenticate({ username: proxyUsername, password: proxyPassword });
-          // await page.setUserAgent(getRandomUserAgent());
-          await setRequestInterception(page);
+          await page.authenticate({ username: proxyUsername, password: proxyPassword });
+          await page.setUserAgent(getRandomUserAgent());
+          page.evaluateOnNewDocument(script);
+          
+          // await setRequestInterception(page);
 
           const movie = await scrapeMoviePage(page, url);
           await page.close();
           if (movie) {
             // await saveMovie(movie);
             movies.push(movie);
+            queue.delete(url);
+            crawled.add(url)
             logger.info(`Scraped movie: ${movie.title}`);
             if (movies.length % 10 === 0) {
               // fs.writeFileSync(moviesFilePath, JSON.stringify(movies, null, 2));
@@ -196,6 +263,7 @@ const main = async () => {
           }
         } else {
           await scrapePage(browser, url);
+          queue.delete(url);
         }
       }
 
@@ -207,7 +275,7 @@ const main = async () => {
       logger.info(`Finished scraping. Total movies: ${movies.length}`);
     }
   } finally {
-    await browser.close();
+    // await browser.close();
   }
 };
 
